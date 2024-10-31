@@ -133,8 +133,8 @@ for anc_index, anchor_image_path in enumerate(anchor_paths):
     img = cv2.resize(img, (w, h))
     # Apply median blur to the image to remove noise and small details not present in target images
     img = median_blur(img, 3)
-    # Apply Gaussian blur to the image to make image smoother
-    img = cv2.GaussianBlur(img, (3, 3), 0)
+    # Apply Gaussian blur to the image to make image smoother, closer to the target images
+    img = cv2.GaussianBlur(img, (5, 5), 0)
     # Resize backgroundless image to match the anchor image
     backgroundless_img = cv2.resize(backgroundless_img, (img.shape[1], img.shape[0]))
     mask, foreground = get_anchor_mask(backgroundless_img)
@@ -217,8 +217,8 @@ ax.bar(range(len(colors)), frequencies, color=[color / 255 for color in colors])
 ax.set_xticks(range(len(colors)))
 ax.set_xticklabels([f'({color[0]}, {color[1]}, {color[2]})' for color in colors])
 
-# Get the top 3 colors (excluding the background color)
-color_with_frequencies = color_with_frequencies[:3]
+# Get the top 2 colors (excluding the background color)
+color_with_frequencies = color_with_frequencies[:2]
 
 # Save the histogram to the output folder
 plt.savefig('output/color_histogram.png')
@@ -232,14 +232,6 @@ frequencies = [color[1] for color in color_with_frequencies]
 ax.bar(range(len(colors)), frequencies, color=[color / 255 for color in colors])
 ax.set_xticks(range(len(colors)))
 ax.set_xticklabels([f'({color[0]}, {color[1]}, {color[2]})' for color in colors])
-
-# Now, we have the sift features and the expected colors of the anchor image.
-# We can now start by finding regions of interest by finding the uclidean distance
-# between the anchor colors and the target image colors.
-# To do this, we will first convert the image into superpixels. Then, we will find the average color of each superpixel
-# The distance between the superpixel color and the nearest anchor image color will be determined. Then, each superpixel that is
-# Near enough will be considered part of a region of interest, connected superpixels will be considered to determine an enclosing rectangle
-# around the region of interest.
 
 # Get the target images
 target_images = glob.glob(target_root + '/*.png')
@@ -284,7 +276,6 @@ for target_path in target_images:
     # Create a 2d array to represent the heat map of pixel interest
     img = cv2.imread(target_path, cv2.IMREAD_COLOR)
     img = cv2.resize(img, (0, 0), fx=1, fy=1)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     h, w = img.shape[:2]
     target_height = h
     target_width = w
@@ -310,7 +301,7 @@ for target_path in target_images:
                     intensity_difference = temp_intensity_diff
             # Calculate the interest of the pixel based on the color difference and the frequency of the color
             interest = 1 - min_color_difference / 765
-            interest = interest * (1 - intensity_difference / 255)
+            interest = interest * (1 - intensity_difference / 765)
             interest = interest * (freq//5000) * (freq//5000)
             heat_array[i, j] = interest
             color_mapped_image[i, j, 0] = pixel_color[2]
@@ -391,20 +382,24 @@ for target_path in target_images:
         # Match the SIFT features of the ROI to the anchor images
         # To ensure only one match per keypoint in the target image, we will limit the number of matches to 1
         for anchor_id, anchor_des in enumerate(anchor_descriptors):
-            match_quality = 0
+            similarity_score = 0
+            match_quality = float(0)
             match_count = 0
             matches, matches_list = match_sift_features(np.array([descriptor for descriptor in des]), np.array(anchor_des))
             # Determine the quality of the matches as a ratio of the number of matches to the number of matched keypoints in the anchor image
             if len(anchor_des) > 0:
                 for match in matches:
-                    if(match != None and len(match) == 3):
+                    if(match != None):
+                        similarity_score = len(match) / len(anchor_des)
                         print(match)
-                        match_quality += 1 / match[2]
-                        match_quality /= len(anchor_des)
+                        # Get the size of the anchor keypoint 
+                        keypoint_size = anchor_keypoints[anchor_id][match[0]].size
+                        match_quality += float(1) / match[2]
+                        match_quality /= float(len(anchor_des))
                 match_count = len(matches)
 
             # Update the best ROI if the current ROI has more matches
-            if match_quality >= best_match_quality:
+            if match_quality > best_match_quality:
                 best_match_count = match_count
                 best_roi = roi
                 best_matches = matches_list
@@ -413,6 +408,7 @@ for target_path in target_images:
                 best_match_quality = match_quality
                 best_kp = kp
                 best_descriptors = des
+                best_similarity_score = similarity_score
             
     # Draw the Best ROI on the target image
     if best_roi is not None:
