@@ -14,8 +14,10 @@ show_debug_images = True
 # Padding is used to create a larger region of interest (ROI) around the detected object to ensure the entire object is captured
 # Modiffy these values based on the object in question.
 image_roi_padding = [1, 0.3, 0.3, 0.3] # Top, right, bottom, left padding as a ratio of the ROI size
-# Resize the anchor image, the smaller the value, the smaller the anchor image
+# Resize the anchor image, the smaller the value, the smaller the anchor image. 
+# This is set small as the anchor resolution is high compared to the target images
 anchor_scaling = 0.125
+
 
 # Define paths to the anchor and target image folders
 anchor_root = 'data/Anchor'
@@ -129,6 +131,10 @@ for anc_index, anchor_image_path in enumerate(anchor_paths):
     anchor_w = w
     anchor_h = h
     img = cv2.resize(img, (w, h))
+    # Apply median blur to the image to remove noise and small details not present in target images
+    img = median_blur(img, 3)
+    # Apply Gaussian blur to the image to make image smoother
+    img = cv2.GaussianBlur(img, (3, 3), 0)
     # Resize backgroundless image to match the anchor image
     backgroundless_img = cv2.resize(backgroundless_img, (img.shape[1], img.shape[0]))
     mask, foreground = get_anchor_mask(backgroundless_img)
@@ -348,20 +354,6 @@ for target_path in target_images:
     # Now that we have the ROIS, we can use the SIFT features to find the keypoints in the ROIs
     # and match them to the anchor image keypoints. We can then determine the the quality of each ROI match
 
-    # Load the target image
-    target_image = cv2.imread(target_path, cv2.IMREAD_COLOR)
-
-    # Convert the image to grayscale
-    target_image = cv2.cvtColor(target_image, cv2.COLOR_BGR2GRAY)
-    
-    # Double the size of the target image for better feature detection
-    target_image = cv2.resize(target_image, fx=2, fy=2, dsize=(0, 0))
-
-    # Write the target image to a file for debugging
-    if show_debug_images:
-        cv2.imwrite(f'output/target_image.png', target_image)
-
-
     # For each ROI, get the sub-image and detect SIFT features
     
     best_roi_image = None
@@ -374,6 +366,11 @@ for target_path in target_images:
     best_kp = None
     best_descriptors = None
     for roi in rois:
+        # Load the target image
+        target_image = cv2.imread(target_path, cv2.IMREAD_COLOR)
+
+        # Convert the image to grayscale
+        target_image = cv2.cvtColor(target_image, cv2.COLOR_BGR2GRAY)
         x, y, w, h = roi
         # Skip very small ROIs
         if (w < int(target_height * 0.03) or h < int(target_height * 0.1)):
@@ -399,11 +396,15 @@ for target_path in target_images:
             matches, matches_list = match_sift_features(np.array([descriptor for descriptor in des]), np.array(anchor_des))
             # Determine the quality of the matches as a ratio of the number of matches to the number of matched keypoints in the anchor image
             if len(anchor_des) > 0:
-                match_quality = len(matches) / len(anchor_des)
+                for match in matches:
+                    if(match != None and len(match) == 3):
+                        print(match)
+                        match_quality += 1 / match[2]
+                        match_quality /= len(anchor_des)
                 match_count = len(matches)
 
             # Update the best ROI if the current ROI has more matches
-            if match_quality > best_match_quality:
+            if match_quality >= best_match_quality:
                 best_match_count = match_count
                 best_roi = roi
                 best_matches = matches_list
@@ -433,7 +434,7 @@ for target_path in target_images:
     # Get the matches using the sift matching algorithm
     # Print the size of the anchor image
     
-    if(len(best_matches) == 0 or best_roi_image is None):
+    if(best_matches == None or len(best_matches) == 0 or best_roi_image is None):
         continue
     
     # Draw the matches between the anchor and target image
@@ -442,24 +443,42 @@ for target_path in target_images:
     # Draw the images side by side, gaps are black (0)
     # The target image is on the left, the anchor image is on the right
 
-    match_image = np.zeros((len(best_roi_image[0]) + len(anchor_image[0]), len(best_roi_image) + len(anchor_image)), np.uint8)
+    match_image = np.zeros((max(len(best_roi_image) , len(anchor_image)), len(best_roi_image[0]) + len(anchor_image[0])), np.uint8)
     match_image.fill(0)
     best_roi_image = np.uint8(best_roi_image)
+    # Get the anchor_image from the average of its channels
+    anchor_image = cv2.cvtColor(anchor_image, cv2.COLOR_BGR2GRAY)
     anchor_image = np.uint8(anchor_image)
     # Draw the target image on the left
     match_image[:len(best_roi_image), :len(best_roi_image[0])] = best_roi_image
     # Draw the anchor image on the right
     match_image[:len(anchor_image), len(best_roi_image[0]):] = anchor_image
     # Draw the matches
+    # Conver matches to an image with 3 channels
+    match_image = cv2.cvtColor(match_image, cv2.COLOR_GRAY2BGR)
     for match in best_matches:
-        target_kp = best_kp[match[0]]
-        anchor_kp = anchor_keypoints[best_anchor_id][match[1]]
+        # Get the keypoints
+        kp1 = best_kp[match[0][0]]
+        kp2 = anchor_keypoints[best_anchor_id][match[0][1]]
+        # Get the coordinates of the keypoints
+        x1, y1 = int(kp1.pt[0]), int(kp1.pt[1])
+        x2, y2 = int(kp2.pt[0]), int(kp2.pt[1])
         # Draw a line between the keypoints
-        cv2.line(match_image, (int(target_kp.pt[0]), int(target_kp.pt[1])), (int(anchor_kp.pt[0] + len(best_roi_image[0])), int(anchor_kp.pt[1])), (255, 0, 0), 1)
+        cv2.line(match_image, (x1, y1), (x2 + len(best_roi_image[0]), y2), (0,255,0), 1)
         # Draw a circle around the keypoints
-        cv2.circle(match_image, (int(target_kp.pt[0]), int(target_kp.pt[1])), 2, (0, 255, 0), 1)
-        cv2.circle(match_image, (int(anchor_kp.pt[0] + len(best_roi_image[0])), int(anchor_kp.pt[1]), 2, (0, 255, 0), 1))
+        cv2.circle(match_image, (x1, y1), 3, (255,0,0), 1)
+        cv2.circle(match_image, (x2 + len(best_roi_image[0]), y2), 3, (0,0,255), 1)
+
 
     # Save the match image to the output folder
     cv2.imwrite(f'output/matches/{target_path.split("\\")[-1]}', match_image)
+
+    # Save the target image with the best ROI identified
+    target_image = cv2.imread(target_path, cv2.IMREAD_COLOR)
+    x, y, w, h = best_roi
+    cv2.rectangle(target_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+    # Add test with the similarity score to the image
+    cv2.putText(target_image, f"Similarity Score (out of 1): {best_match_quality:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.imwrite(f'output\\target_with_identification\\{target_path.split("\\")[-1]}', target_image)
+
 
