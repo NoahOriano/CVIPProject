@@ -252,7 +252,7 @@ def get_rois_from_heatmap(heatmap, threshold):
     contours, _ = cv2.findContours(binary_map, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     rois = []
-    output_img = cv2.cvtColor(heatmap, cv2.COLOR_GRAY2BGR)  # Convert heatmap to color for visualization
+    output_img = heat_array.astype(np.uint8)
 
     # Iterate through contours and extract bounding rectangles
     for contour in contours:
@@ -265,7 +265,7 @@ def get_rois_from_heatmap(heatmap, threshold):
         w = min(w + padded_w, heatmap.shape[1] - x)
         h = min(h + padded_h, heatmap.shape[0] - y)
         rois.append((x, y, w, h))
-        cv2.rectangle(output_img, (x, y), (x + w, y + h), (0, 255, 0))  # Draw rectangles on ROIs
+        cv2.rectangle(output_img, (x, y), (x + w, y + h), 255)  # Draw rectangles on ROIs
     
     return rois, output_img
 
@@ -280,7 +280,6 @@ for target_path in target_images:
     h, w = img.shape[:2]
     target_height = h
     target_width = w
-    color_mapped_image = np.zeros((h, w, 3), np.uint8)
     heat_array = np.zeros((h, w), np.double)
     for i in range(h):
         for j in range(w):
@@ -300,23 +299,20 @@ for target_path in target_images:
                     freq = color_with_freq[1]
                     min_color_difference = color_difference
                     intensity_difference = temp_intensity_diff
+            # Calculate the interest/heat of the pixel
+            interest = freq / (min_color_difference + 5 + intensity_difference)
             # Calculate the interest of the pixel based on the color difference and the frequency of the color
             interest = 1 - min_color_difference / 765
             interest = interest * (1 - intensity_difference / 255)
-            interest = interest * (freq//5000)
+            interest = interest * (freq//5000) * (freq//5000)
             heat_array[i, j] = interest
-            color_mapped_image[i, j, 0] = pixel_color[2]
-            color_mapped_image[i, j, 1] = pixel_color[1]
-            color_mapped_image[i, j, 2] = pixel_color[0]
 
-    if show_debug_images:
-        # Get the first channel of the image
-        img_channel_0 = img[:, :, 0]
-        img_channel_1 = img[:, :, 1]
-        img_channel_2 = img[:, :, 2]
-        cv2.imwrite(f'output/example_img_channel_0.png', img_channel_0)
-        cv2.imwrite(f'output/example_img_channel_1.png', img_channel_1)
-        cv2.imwrite(f'output/example_img_channel_2.png', img_channel_2)
+    img_channel_0 = img[:, :, 0]
+    img_channel_1 = img[:, :, 1]
+    img_channel_2 = img[:, :, 2]
+    cv2.imwrite(f'output/example_img_channel_0.png', img_channel_0)
+    cv2.imwrite(f'output/example_img_channel_1.png', img_channel_1)
+    cv2.imwrite(f'output/example_img_channel_2.png', img_channel_2)
     # Save the distance array as an image
 
     # Apply a median blur to the heat array to smooth it out
@@ -324,18 +320,20 @@ for target_path in target_images:
     # Apply a Gaussian blur to the heat array to smooth it out
     heat_array = cv2.GaussianBlur(heat_array, (3, 3), 0)
     # Convert the heat array to 0-255
-    heat_array = heat_array * 255 / np.max(heat_array)
+    heat_array = (heat_array - np.min(heat_array)) * 255 / (np.max(heat_array) - np.min(heat_array))
+    # Square the heat array twice to increase the contrast
+    heat_array = np.square(heat_array)
+    heat_array = (heat_array - np.min(heat_array)) * 255 / (np.max(heat_array) - np.min(heat_array))
+    heat_array = np.square(heat_array)
+    heat_array = (heat_array - np.min(heat_array)) * 255 / (np.max(heat_array) - np.min(heat_array))
     print(np.max(heat_array))
     print(np.min(heat_array))
     heat_image = heat_array.astype(np.uint8)
     cv2.imwrite(f'output/heat_images/{target_path.split("\\")[-1]}', heat_image)
 
-    # Convert the heat array to a grayscale image
-    heat_array = heat_array.astype(np.uint8)
-
     # Get the ROIs from the heat map
     # Set a threshold to define regions of interest
-    threshold = max(70, np.median(heat_array)*2)
+    threshold = max(60, np.max(heat_array)*0.5)
 
     # Get ROIs and visualization image
     rois, output_img = get_rois_from_heatmap(heat_array, threshold)
@@ -383,7 +381,7 @@ for target_path in target_images:
         # Match the SIFT features of the ROI to the anchor images
         # To ensure only one match per keypoint in the target image, we will limit the number of matches to 1
         for anchor_id, anchor_des in enumerate(anchor_descriptors):
-            similarity_score = 0
+            similarity_score =float(0)
             match_quality = float(0)
             match_count = 0
             matches, matches_list = match_sift_features(np.array([descriptor for descriptor in des]), np.array(anchor_des))
