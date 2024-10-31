@@ -1,0 +1,9 @@
+/output/*.png
+/output/*.jpg
+/output/*.jpeg
+/output/*.gif
+/output/*.bmp
+/output/*.tiff
+/output/anchor_features/*
+/output/anchor_reduced_colors/*
+/output/heat_images/*
