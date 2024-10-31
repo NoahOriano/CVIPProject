@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import glob
+import math
 
 import sift_matching_algorithm
 import sift_algorithm
@@ -14,7 +15,7 @@ show_debug_images = True
 # Modiffy these values based on the object in question.
 image_roi_padding = [1, 0.3, 0.3, 0.3] # Top, right, bottom, left padding as a ratio of the ROI size
 # Resize the anchor image, the smaller the value, the smaller the anchor image
-anchor_scaling = 0.25
+anchor_scaling = 0.125
 
 # Define paths to the anchor and target image folders
 anchor_root = 'data/Anchor'
@@ -79,10 +80,10 @@ def match_sift_features(anchor_descriptors, target_descriptors):
         return good_without_list, good
     if(len(matches[0]) < 2):
         return good_without_list, good
-    for m, n in matches:
-        if m.distance < 0.6 * n.distance:
-            good.append([m])
-            good_without_list.append(m)
+    # Handling of good matches is done by the sift_matching_algorithm (using the ratio test)
+    for match in matches:
+        good.append([match])
+        good_without_list.append(match)
     return good_without_list, good
 
 # Helper function to get the mask for the anchor images
@@ -122,14 +123,11 @@ for anc_index, anchor_image_path in enumerate(anchor_paths):
     img = cv2.imread(anchor_image_path, cv2.IMREAD_COLOR)
     # Convert to grayscale for SIFT if the image has RGB channels
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # Apply bluring to the image to reduce detection of small features
-    img = cv2.GaussianBlur(img, (5, 5), 0)
     h, w = img.shape[:2]
     h = int(h * anchor_scaling)
     w = int(w * anchor_scaling)
     anchor_w = w
     anchor_h = h
-    img = cv2.resize(img, (w, h))
     img = cv2.resize(img, (w, h))
     # Resize backgroundless image to match the anchor image
     backgroundless_img = cv2.resize(backgroundless_img, (img.shape[1], img.shape[0]))
@@ -205,8 +203,20 @@ for anchor_color in center:
 # Sort the colors by frequency
 color_with_frequencies.sort(key=lambda x: x[1], reverse=True)
 
-# Remove the least frequent colors
-color_with_frequencies = color_with_frequencies[:2]
+# Save the histogram of colors to the output folder
+fig, ax = plt.subplots()
+colors = [color[0] for color in color_with_frequencies]
+frequencies = [color[1] for color in color_with_frequencies]
+ax.bar(range(len(colors)), frequencies, color=[color / 255 for color in colors])
+ax.set_xticks(range(len(colors)))
+ax.set_xticklabels([f'({color[0]}, {color[1]}, {color[2]})' for color in colors])
+
+# Get the top 3 colors (excluding the background color)
+color_with_frequencies = color_with_frequencies[:3]
+
+# Save the histogram to the output folder
+plt.savefig('output/color_histogram.png')
+
 res2 = cv2.cvtColor(res2, cv2.COLOR_BGR2RGB)
 
 # Write a chart of the colors and their frequencies to the output folder
@@ -282,15 +292,17 @@ for target_path in target_images:
             for color_with_freq in color_with_frequencies:
                 anchor_color = color_with_freq[0]
                 # Get the difference in color channel values
-                temp_intensity_diff = abs(np.int16(pixel[0]) + np.int16(pixel[1]) + np.int16(pixel[2]) - np.int16(anchor_color[0]) - np.int16(anchor_color[1]) - np.int16(anchor_color[2]))/6
+                temp_intensity_diff = abs(np.int16(pixel[0]) + np.int16(pixel[1]) + np.int16(pixel[2]) - np.int16(anchor_color[0]) - np.int16(anchor_color[1]) - np.int16(anchor_color[2]))/3
                 color_difference = abs(np.int16(pixel[0]) - np.int16(anchor_color[0]) - temp_intensity_diff) + abs(np.int16(pixel[1]) - np.int16(anchor_color[1]) - temp_intensity_diff) + abs(np.int16(pixel[2]) - np.int16(anchor_color[2]) - temp_intensity_diff)
                 if min_color_difference > color_difference:
                     pixel_color = anchor_color
                     freq = color_with_freq[1]
                     min_color_difference = color_difference
                     intensity_difference = temp_intensity_diff
-            # Calculate the interest/heat of the pixel
-            interest = freq / (min_color_difference + 5 + intensity_difference)
+            # Calculate the interest of the pixel based on the color difference and the frequency of the color
+            interest = 1 - min_color_difference / 765
+            interest = interest * (1 - intensity_difference / 255)
+            interest = interest * (freq//5000) * (freq//5000)
             heat_array[i, j] = interest
             color_mapped_image[i, j, 0] = pixel_color[2]
             color_mapped_image[i, j, 1] = pixel_color[1]

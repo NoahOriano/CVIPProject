@@ -5,9 +5,9 @@ from functools import cmp_to_key
 
 float_tolerance = 1e-7
 
-####################
-# Primary function #
-####################
+
+###########################################################################################################################
+# Primary function
 
 def computeKeypointsAndDescriptors(image, sigma=1.6, num_intervals=3, assumed_blur=0.5, image_border_width=5):
     """Compute SIFT keypoints and descriptors for an input image
@@ -24,9 +24,9 @@ def computeKeypointsAndDescriptors(image, sigma=1.6, num_intervals=3, assumed_bl
     descriptors = generateDescriptors(keypoints, gaussian_images)
     return keypoints, descriptors
 
-#########################
-# Image pyramid related #
-#########################
+
+###########################################################################################################################
+# Image pyramid related
 
 def generateBaseImage(image, sigma, assumed_blur):
     """Generate base image from input image by upsampling by 2 in both directions and blurring
@@ -85,14 +85,14 @@ def generateDoGImages(gaussian_images):
         dog_images.append(dog_images_in_octave)
     return array(dog_images, dtype=object)
 
-###############################
-# Scale-space extrema related #
-###############################
+
+###########################################################################################################################
+# Scale-space extrema related
 
 def findScaleSpaceExtrema(gaussian_images, dog_images, num_intervals, sigma, image_border_width, contrast_threshold=0.04):
     """Find pixel positions of all scale-space extrema in the image pyramid
     """
-    threshold = floor(0.5 * contrast_threshold / num_intervals * 255)  # from OpenCV implementation
+    threshold = floor(0.5 * contrast_threshold / num_intervals * 255)
     keypoints = []
 
     for octave_index, dog_images_in_octave in enumerate(dog_images):
@@ -195,9 +195,8 @@ def computeHessianAtCenterPixel(pixel_array):
                   [dxy, dyy, dys],
                   [dxs, dys, dss]])
 
-#########################
-# Keypoint orientations #
-#########################
+###########################################################################################################################
+# Keypoint orientations
 
 def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, radius_factor=3, num_bins=36, peak_ratio=0.8, scale_factor=1.5):
     """Compute orientations for each keypoint
@@ -243,9 +242,8 @@ def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, rad
             keypoints_with_orientations.append(new_keypoint)
     return keypoints_with_orientations
 
-##############################
-# Duplicate keypoint removal #
-##############################
+###########################################################################################################################
+# Duplicate keypoint removal
 
 def compareKeypoints(keypoint1, keypoint2):
     """Return True if keypoint1 is less than keypoint2
@@ -282,9 +280,8 @@ def removeDuplicateKeypoints(keypoints):
             unique_keypoints.append(next_keypoint)
     return unique_keypoints
 
-#############################
-# Keypoint scale conversion #
-#############################
+###########################################################################################################################
+# Keypoint scale conversion
 
 def convertKeypointsToInputImageSize(keypoints):
     """Convert keypoint point, size, and octave to input image size
@@ -297,9 +294,8 @@ def convertKeypointsToInputImageSize(keypoints):
         converted_keypoints.append(keypoint)
     return converted_keypoints
 
-#########################
-# Descriptor generation #
-#########################
+###########################################################################################################################
+# Descripter generation
 
 def unpackOctave(keypoint):
     """Compute octave, layer, and scale from a keypoint
@@ -332,7 +328,7 @@ def generateDescriptors(keypoints, gaussian_images, window_width=4, num_bins=8, 
         orientation_bin_list = []
         histogram_tensor = zeros((window_width + 2, window_width + 2, num_bins))   # first two dimensions are increased by 2 to account for border effects
 
-        # Descriptor window size (described by half_width) follows OpenCV convention
+        # Descriptor window size
         hist_width = scale_multiplier * 0.5 * scale * keypoint.size
         half_width = int(round(hist_width * sqrt(2) * (window_width + 1) * 0.5))   # sqrt(2) corresponds to diagonal length of a pixel
         half_width = int(min(half_width, sqrt(num_rows ** 2 + num_cols ** 2)))     # ensure half_width lies within image
@@ -358,9 +354,7 @@ def generateDescriptors(keypoints, gaussian_images, window_width=4, num_bins=8, 
                         orientation_bin_list.append((gradient_orientation - angle) * bins_per_degree)
 
         for row_bin, col_bin, magnitude, orientation_bin in zip(row_bin_list, col_bin_list, magnitude_list, orientation_bin_list):
-            # Smoothing via trilinear interpolation
-            # Notations follows https://en.wikipedia.org/wiki/Trilinear_interpolation
-            # Note that we are really doing the inverse of trilinear interpolation here (we take the center value of the cube and distribute it among its eight neighbors)
+            # Inverse of trilinear interpolation, take the center value of the cube and distribute it among its eight neighbors
             row_bin_floor, col_bin_floor, orientation_bin_floor = floor([row_bin, col_bin, orientation_bin]).astype(int)
             row_fraction, col_fraction, orientation_fraction = row_bin - row_bin_floor, col_bin - col_bin_floor, orientation_bin - orientation_bin_floor
             if orientation_bin_floor < 0:

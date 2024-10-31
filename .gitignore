@@ -10,3 +10,6 @@
 /output/roi_images/*
 /output/target_with_identification/*
 /output/matches/*
+/__pycache__
+__pycache__
+*.pyc
