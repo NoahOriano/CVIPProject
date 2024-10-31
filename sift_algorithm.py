@@ -9,7 +9,7 @@ def generate_scale_space(image, num_octaves=4, num_scales=5, initial_sigma=1.6):
     for octave in range(num_octaves):
         scales = []
         sigma = initial_sigma * (2 ** octave)
-        for scale in range(num_scales):
+        for _ in range(num_scales):
             blurred = gaussian_filter(image, sigma=sigma)
             scales.append(blurred)
             sigma *= np.sqrt(2)  # Increase sigma for next scale
@@ -34,9 +34,22 @@ def find_keypoints(dog_octaves, threshold=0.03):
         for s in range(1, len(octave) - 1):
             for y in range(1, octave[s].shape[0] - 1):
                 for x in range(1, octave[s].shape[1] - 1):
-                    patch = octave[s, y - 1:y + 2, x - 1:x + 2]
+                    patch = octave[s][y - 1:y + 2, x - 1:x + 2]
                     if is_extremum(patch, octave[s][y, x], threshold):
                         keypoints.append((o, s, x, y))
+    return keypoints
+
+def find_keypoints_with_mask(dog_octaves, mask, threshold=0.03):
+    keypoints = []
+    for o, octave in enumerate(dog_octaves):
+        for s in range(1, len(octave) - 1):
+            mask_resized = cv2.resize(mask, (octave[s].shape[1], octave[s].shape[0]))
+            for y in range(1, octave[s].shape[0] - 1):
+                for x in range(1, octave[s].shape[1] - 1):
+                    if mask_resized[y, x] != 0:
+                        patch = octave[s][y - 1:y + 2, x - 1:x + 2]
+                        if is_extremum(patch, octave[s][y, x], threshold):
+                            keypoints.append((o, s, x, y))
     return keypoints
 
 # Status: duh it works its p basic
@@ -60,6 +73,7 @@ def assign_orientation(image, keypoints, num_bins=36):
     return orientations
 
 def compute_gradient(image, x, y, size=3):
+    print(image)
     gx = cv2.Sobel(image[y-size:y+size+1, x-size:x+size+1], cv2.CV_64F, 1, 0)
     gy = cv2.Sobel(image[y-size:y+size+1, x-size:x+size+1], cv2.CV_64F, 0, 1)
     magnitude = np.sqrt(gx**2 + gy**2)
