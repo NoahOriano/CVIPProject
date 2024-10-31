@@ -195,6 +195,7 @@ def computeHessianAtCenterPixel(pixel_array):
                   [dxy, dyy, dys],
                   [dxs, dys, dss]])
 
+
 ###########################################################################################################################
 # Keypoint orientations
 
@@ -242,6 +243,7 @@ def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, rad
             keypoints_with_orientations.append(new_keypoint)
     return keypoints_with_orientations
 
+
 ###########################################################################################################################
 # Duplicate keypoint removal
 
@@ -280,6 +282,7 @@ def removeDuplicateKeypoints(keypoints):
             unique_keypoints.append(next_keypoint)
     return unique_keypoints
 
+
 ###########################################################################################################################
 # Keypoint scale conversion
 
@@ -293,6 +296,7 @@ def convertKeypointsToInputImageSize(keypoints):
         keypoint.octave = (keypoint.octave & ~255) | ((keypoint.octave - 1) & 255)
         converted_keypoints.append(keypoint)
     return converted_keypoints
+
 
 ###########################################################################################################################
 # Descripter generation

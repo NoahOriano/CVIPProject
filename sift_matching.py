@@ -276,6 +276,7 @@ for target_path in target_images:
     # Create a 2d array to represent the heat map of pixel interest
     img = cv2.imread(target_path, cv2.IMREAD_COLOR)
     img = cv2.resize(img, (0, 0), fx=1, fy=1)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     h, w = img.shape[:2]
     target_height = h
     target_width = w
@@ -301,8 +302,8 @@ for target_path in target_images:
                     intensity_difference = temp_intensity_diff
             # Calculate the interest of the pixel based on the color difference and the frequency of the color
             interest = 1 - min_color_difference / 765
-            interest = interest * (1 - intensity_difference / 765)
-            interest = interest * (freq//5000) * (freq//5000)
+            interest = interest * (1 - intensity_difference / 255)
+            interest = interest * (freq//5000)
             heat_array[i, j] = interest
             color_mapped_image[i, j, 0] = pixel_color[2]
             color_mapped_image[i, j, 1] = pixel_color[1]
