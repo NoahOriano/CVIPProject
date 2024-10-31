@@ -5,8 +5,8 @@ import os
 import matplotlib.pyplot as plt
 
 # Paths to the anchor and target image folders
-ANCHOR_ROOT = '/content/drive/MyDrive/R7020E-Project-Files/anchor_no_bg'
-TARGET_ROOT = '/content/drive/MyDrive/R7020E-Project-Files/raw/test/camera_color_image_raw'
+ANCHOR_ROOT = 'data\\anchor_no_bg'
+TARGET_ROOT = 'output\\matching_output'
 
 # Custom function to calculate Euclidean distance
 def calculate_euclidean_distance(descriptor1, descriptor2):

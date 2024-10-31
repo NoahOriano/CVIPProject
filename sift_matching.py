@@ -3,19 +3,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 import glob
 
+import sift_matching_algorithm
+import sift_algorithm
+
+print("SIFT Matching Algorithm")
+print("Begining initialization...")
+
+show_debug_images = True
+# Padding is used to create a larger region of interest (ROI) around the detected object to ensure the entire object is captured
+# Modiffy these values based on the object in question.
+image_roi_padding = [1, 0.3, 0.3, 0.3] # Top, right, bottom, left padding as a ratio of the ROI size
+# Resize the anchor image, the smaller the value, the smaller the anchor image
+anchor_scaling = 0.25
 
 # Define paths to the anchor and target image folders
-anchor_root = 'data/anchor_no_bg'
+anchor_root = 'data/Anchor'
 target_root = 'data/camera_color_image_raw'
 
 # Initialize the SIFT detector
 sift = cv2.SIFT_create()
 
 # Detect the SIFT features for the anchor images
-anchor_images = glob.glob(anchor_root + '/*.png')
-anchor_images.sort()
-anchor_keypoints = []
-anchor_descriptors = []
+anchor_paths = glob.glob(anchor_root + '/*.png')
+anchor_paths.sort()
+anchor_keypoints = np.array([])
 
 def median_blur(image, kernel_size):
     # Ensure kernel size is odd
@@ -42,6 +53,38 @@ def median_blur(image, kernel_size):
     
     return result
 
+# Helper function to detect SIFT features for the target images
+def detect_sift_features_from_path(image_path):
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    kp, des = sift.detectAndCompute(img, None)
+    return kp, des
+
+def detect_sift_features(image):
+    # If the image is not grayscale, convert it to grayscale
+    if len(image.shape) > 2:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Convert the image to float32 for SIFT
+    u_image = np.float32(image)
+    kp, des = sift_algorithm.computeKeypointsAndDescriptors(u_image)
+    return kp, des
+
+def match_sift_features(anchor_descriptors, target_descriptors):
+    # Use sift_matching_algorithm to match the descriptors
+    matches = sift_matching_algorithm.custom_feature_matching(anchor_descriptors, target_descriptors)
+    # Apply ratio test
+    good = []
+    good_without_list = []
+    # Ensure there are at least 2 matches
+    if len(matches) < 2:
+        return good_without_list, good
+    if(len(matches[0]) < 2):
+        return good_without_list, good
+    for m, n in matches:
+        if m.distance < 0.6 * n.distance:
+            good.append([m])
+            good_without_list.append(m)
+    return good_without_list, good
+
 # Helper function to get the mask for the anchor images
 def get_anchor_mask(image):
     # Check if image has an alpha channel (transparency)
@@ -55,45 +98,78 @@ def get_anchor_mask(image):
         # Assume a single-color background and use color-based thresholding
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         # Create mask by thresholding
-        _, mask = cv2.threshold(gray, 2, 255, cv2.THRESH_BINARY)
+        _, mask = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
 
     # Apply the mask to focus on the object
     foreground = cv2.bitwise_and(gray, gray, mask=mask)
     return foreground, mask
 
-# Get the keypoints and descriptors for the anchor images
-for anchor_image_path in anchor_images:
-    # First read the original image to get the mask using transparency
-    img = cv2.imread(anchor_image_path, cv2.IMREAD_UNCHANGED)
-    mask, foreground = get_anchor_mask(img)
-    kp, des = sift.detectAndCompute(foreground, None)
-    anchor_keypoints.append(kp)
-    anchor_descriptors.append(des)
-
-print(f'Number of anchor images: {len(anchor_images)}, starting SIFT feature detection on target images...')
-
-
-# Helper function to detect SIFT features for the target images
-def detect_sift_features(image_path):
-    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    kp, des = sift.detectAndCompute(img, None)
-    return kp, des
-
-# Display the SIFT features and their orrientation for each of the anchor images and save them
-for i, anchor_image_path in enumerate(anchor_images):
-    img = cv2.imread(anchor_image_path)
-    img = cv2.drawKeypoints(img, anchor_keypoints[i], img, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-    cv2.imwrite(f'output/anchor_features/anchor_{i}.png', img)
-
-# Create a grouped image to show all the anchor images together
+# Initiaize a grouped image to show all the anchor images together
+img = cv2.imread(anchor_paths[0], cv2.IMREAD_COLOR)
 h, w = img.shape[:2]
-grouped_image = np.zeros((h, w * len(anchor_images), 3), dtype=np.uint8)
-for i, anchor_image_path in enumerate(anchor_images):
-    img = cv2.imread(anchor_image_path)
-    grouped_image[:, i * w:(i + 1) * w] = img
+h = int(h * anchor_scaling)
+w = int(w * anchor_scaling)
+img = cv2.resize(img, (w, h))
+grouped_image = np.zeros((h, w * len(anchor_paths), 3), dtype=np.uint8)
+anchor_keypoints = []
+anchor_descriptors = []
 
+# Get the keypoints and descriptors for the anchor images
+for anc_index, anchor_image_path in enumerate(anchor_paths):
+    print(f'Processing anchor image {anc_index + 1}/{len(anchor_paths)}')
+    # First read the original image to get the mask using transparency
+    backgroundless_img = cv2.imread("data\\anchor_no_bg\\anchor_image_"+str(anc_index+1)+".png", cv2.IMREAD_COLOR)
+    img = cv2.imread(anchor_image_path, cv2.IMREAD_COLOR)
+    # Convert to grayscale for SIFT if the image has RGB channels
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Apply bluring to the image to reduce detection of small features
+    img = cv2.GaussianBlur(img, (5, 5), 0)
+    h, w = img.shape[:2]
+    h = int(h * anchor_scaling)
+    w = int(w * anchor_scaling)
+    anchor_w = w
+    anchor_h = h
+    img = cv2.resize(img, (w, h))
+    img = cv2.resize(img, (w, h))
+    # Resize backgroundless image to match the anchor image
+    backgroundless_img = cv2.resize(backgroundless_img, (img.shape[1], img.shape[0]))
+    mask, foreground = get_anchor_mask(backgroundless_img)
+    kp, des = detect_sift_features(img)
+    # Save the foreground image for debugging
+    cv2.imwrite(f'output/anchor_foreground/{anchor_image_path.split("\\")[-1]}', foreground)
+
+    # Get rid of any keypoints that are in the background
+    filtered_kp = []
+    filtered_des = []
+    for i, keypoint in enumerate(kp):
+        x, y = int(keypoint.pt[0]), int(keypoint.pt[1])
+        if mask[y, x] > 0:
+            filtered_kp.append(keypoint)
+            filtered_des.append(des[i])
+
+    # Add the filtered keypoints and descriptors to the list
+    anchor_keypoints.append(filtered_kp)
+    anchor_descriptors.append(filtered_des)
+    img = cv2.drawKeypoints(img, anchor_keypoints[anc_index], img, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+    cv2.imwrite(f'output/anchor_features/anchor_{anc_index}.png', img)
+
+    # Generate the grouped image
+    img = cv2.imread(anchor_image_path, cv2.IMREAD_COLOR)
+    h, w = img.shape[:2]
+    h = int(h * anchor_scaling)
+    w = int(w * anchor_scaling)
+
+    # Resize the image to fit the grouped image
+    img = cv2.resize(img, (w, h))
+    # Use the mask to remove the background from the image
+    mask = cv2.resize(mask, (w, h))
+    img = img * (mask[:, :, None] > 0)
+    grouped_image[:, anc_index * w:(anc_index + 1) * w] = img
+
+print(f'Number of anchor images: {len(anchor_paths)}, starting SIFT feature detection on target images...')
+
+# Save the grouped image to the output folder
 cv2.imwrite('output/anchor_grouped.png', grouped_image)
-
 
 # Using clustering, determine the colors that best represent the range of pixel values in the anchor images
 # One of these colors will be the background. The other two will be the colors of the objects in the anchor images.
@@ -107,7 +183,7 @@ Z = np.float32(Z)
 
 # define criteria, number of clusters(K) and apply kmeans()
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-K = 9
+K = 22
 ret,label,center=cv2.kmeans(Z,K,None,criteria,10,cv2.KMEANS_RANDOM_CENTERS)
 
 # Now convert back into uint8, and make original image to show the image
@@ -130,10 +206,8 @@ for anchor_color in center:
 color_with_frequencies.sort(key=lambda x: x[1], reverse=True)
 
 # Remove the least frequent colors
-color_with_frequencies = color_with_frequencies[:3]
-
-# Write the reduced color image to the output folder
-cv2.imwrite(f'output/anchor_reduced_colors/anchors.png', res2)
+color_with_frequencies = color_with_frequencies[:2]
+res2 = cv2.cvtColor(res2, cv2.COLOR_BGR2RGB)
 
 # Write a chart of the colors and their frequencies to the output folder
 fig, ax = plt.subplots()
@@ -142,7 +216,6 @@ frequencies = [color[1] for color in color_with_frequencies]
 ax.bar(range(len(colors)), frequencies, color=[color / 255 for color in colors])
 ax.set_xticks(range(len(colors)))
 ax.set_xticklabels([f'({color[0]}, {color[1]}, {color[2]})' for color in colors])
-plt.savefig('output/anchor_colors.png')
 
 # Now, we have the sift features and the expected colors of the anchor image.
 # We can now start by finding regions of interest by finding the uclidean distance
@@ -162,6 +235,31 @@ count = 0
 
 print (color_with_frequencies)
 
+def get_rois_from_heatmap(heatmap, threshold):
+    # Threshold the heatmap to create a binary image
+    _, binary_map = cv2.threshold(heatmap, threshold, 255, cv2.THRESH_BINARY)
+    binary_map = binary_map.astype(np.uint8)
+
+    # Find contours from the binary image
+    contours, _ = cv2.findContours(binary_map, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    rois = []
+    output_img = cv2.cvtColor(heatmap, cv2.COLOR_GRAY2BGR)  # Convert heatmap to color for visualization
+
+    # Iterate through contours and extract bounding rectangles
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        # Apply padding to the bounding rectangle
+        padded_w = int(w * (image_roi_padding[1] + image_roi_padding[3]))
+        padded_h = int(h * (image_roi_padding[0] + image_roi_padding[2]))
+        x = max(0, x - int(w * image_roi_padding[3]))
+        y = max(0, y - int(h * image_roi_padding[0]))
+        w = min(w + padded_w, heatmap.shape[1] - x)
+        h = min(h + padded_h, heatmap.shape[0] - y)
+        rois.append((x, y, w, h))
+        cv2.rectangle(output_img, (x, y), (x + w, y + h), (0, 255, 0))  # Draw rectangles on ROIs
+    
+    return rois, output_img
 
 # Process each target image
 for target_path in target_images:
@@ -170,6 +268,7 @@ for target_path in target_images:
     # Create a 2d array to represent the heat map of pixel interest
     img = cv2.imread(target_path, cv2.IMREAD_COLOR)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    h, w = img.shape[:2]
     color_mapped_image = np.zeros((h, w, 3), np.uint8)
     heat_array = np.zeros((h, w), np.double)
     for i in range(h):
@@ -196,26 +295,151 @@ for target_path in target_images:
             color_mapped_image[i, j, 0] = pixel_color[2]
             color_mapped_image[i, j, 1] = pixel_color[1]
             color_mapped_image[i, j, 2] = pixel_color[0]
-        
+
+    if show_debug_images:
+        # Get the first channel of the image
+        img_channel_0 = img[:, :, 0]
+        img_channel_1 = img[:, :, 1]
+        img_channel_2 = img[:, :, 2]
+        cv2.imwrite(f'output/example_img_channel_0.png', img_channel_0)
+        cv2.imwrite(f'output/example_img_channel_1.png', img_channel_1)
+        cv2.imwrite(f'output/example_img_channel_2.png', img_channel_2)
+    # Save the distance array as an image
+
     # Apply a median blur to the heat array to smooth it out
     heat_array = median_blur(heat_array, 5)
-
-    # Save the color-mapped image
-    cv2.imwrite(f'output/example_mapping.png', color_mapped_image)
-    # Get the first channel of the image
-    img_channel_0 = img[:, :, 0]
-    img_channel_1 = img[:, :, 1]
-    img_channel_2 = img[:, :, 2]
-    cv2.imwrite(f'output/example_img_channel_0.png', img_channel_0)
-    cv2.imwrite(f'output/example_img_channel_1.png', img_channel_1)
-    cv2.imwrite(f'output/example_img_channel_2.png', img_channel_2)
-    # Save the distance array as an image
-    # Normalize the heat array to 0-255
+    # Apply a Gaussian blur to the heat array to smooth it out
+    heat_array = cv2.GaussianBlur(heat_array, (3, 3), 0)
+    # Convert the heat array to 0-255
     heat_array = heat_array * 255 / np.max(heat_array)
     print(np.max(heat_array))
     print(np.min(heat_array))
     heat_image = heat_array.astype(np.uint8)
     cv2.imwrite(f'output/heat_images/{target_path.split("\\")[-1]}', heat_image)
+
+    # Convert the heat array to a grayscale image
+    heat_array = heat_array.astype(np.uint8)
+
+    # Get the ROIs from the heat map
+    # Set a threshold to define regions of interest
+    threshold = max(70, np.median(heat_array)*2)
+
+    # Get ROIs and visualization image
+    rois, output_img = get_rois_from_heatmap(heat_array, threshold)
+
+    # Save the output image with ROIs
+    cv2.imwrite(f'output/roi_images/{target_path.split("\\")[-1]}', output_img)
+
+    # Now that we have the ROIS, we can use the SIFT features to find the keypoints in the ROIs
+    # and match them to the anchor image keypoints. We can then determine the the quality of each ROI match
+
+    # Load the target image
+    target_image = cv2.imread(target_path, cv2.IMREAD_COLOR)
+
+    # Convert the image to grayscale
+    target_image = cv2.cvtColor(target_image, cv2.COLOR_BGR2GRAY)
+    
+    # Double the size of the target image for better feature detection
+    target_image = cv2.resize(target_image, fx=2, fy=2, dsize=(0, 0))
+
+    # Write the target image to a file for debugging
+    if show_debug_images:
+        cv2.imwrite(f'output/target_image.png', target_image)
+
+
+    # For each ROI, get the sub-image and detect SIFT features
+    
+    best_roi_image = None
+    print(f'Number of ROIs: {len(rois)}')
+    best_matches = None
+    best_match_count = 0
+    best_anchor_id = 0
+    best_roi = None
+    best_match_quality = 0
+    best_kp = None
+    best_descriptors = None
+    for roi in rois:
+        x, y, w, h = roi
+        # Get the region of interest (ROI) from the target image
+        roi_image = target_image[y:y + h, x:x + w]
+        # Write the ROI image to a file for debugging
+        if show_debug_images:
+            cv2.imwrite(f'output/ROI.png', roi_image)
+        # Upscale the ROI image to 3 times the size of the anchor image
+        roi_image = cv2.resize(roi_image, (anchor_w * 3, anchor_h * 3))
+        kp, des = detect_sift_features(roi_image)
+        print(f'Number of keypoints detected in ROI: {len(kp)}')
+        if(len(kp) == 0):
+            continue
+        if(len(des) == 0):
+            continue
+        roi_best_matches = None
+
+        # Match the SIFT features of the ROI to the anchor images
+        # To ensure only one match per keypoint in the target image, we will limit the number of matches to 1
+        for anchor_id, anchor_des in enumerate(anchor_descriptors):
+            match_quality = 0
+            match_count = 0
+            matches, matches_list = match_sift_features(np.array([descriptor for descriptor in des]), np.array(anchor_des))
+            # Determine the quality of the matches as a ratio of the number of matches to the number of matched keypoints in the anchor image
+            if len(anchor_des) > 0:
+                match_quality = len(matches) / len(anchor_des)
+                match_count = len(matches)
+
+            # Update the best ROI if the current ROI has more matches
+            if match_quality > best_match_quality:
+                best_match_count = match_count
+                best_roi = roi
+                best_matches = matches_list
+                best_roi_image = roi_image
+                best_anchor_id = anchor_id
+                best_match_quality = match_quality
+                best_kp = kp
+                best_descriptors = des
+            
+    # Draw the Best ROI on the target image
+    if best_roi is not None:
+        x, y, w, h = best_roi
+        cv2.rectangle(target_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.imwrite(f'output/target_with_identification/{target_path.split("\\")[-1]}', target_image)
+        print(f'Best ROI found with {best_match_count} matches')
+        print(f'Anchor image index: {best_anchor_id}')
+        print(f'Match quality: {best_match_quality:.2f}')
+    else:
+        print('No ROI found')
+
+    # Generate an image with the anchor image and the target image side by side with matches
+    anchor_image = cv2.imread(anchor_paths[best_anchor_id], cv2.IMREAD_COLOR)
+    anchor_image = cv2.resize(anchor_image, (int(len(anchor_image[0])*anchor_scaling), int(len(anchor_image)*anchor_scaling)))
+
+    # Draw the matches between the anchor and target images
+    print(best_matches)
+    # Get the matches using the sift matching algorithm
+    # Print the size of the anchor image
+    
+    if(len(best_matches) == 0 or best_roi_image is None):
+        continue
+    
+    # Draw the matches between the anchor and target image
+    # Consider that the target image is 3 times the size of the anchor image
+    # Place the anchor image over the target image in the top left corner
+    # Draw lines between the matches in the target image
+    # Draw circles around the matches in the anchor image
+    match_image = np.zeros((len(best_roi_image), len(best_roi_image[0]) + len(anchor_image[0]), 3))
+    match_image[:len(anchor_image), :len(anchor_image[0])] = anchor_image
+    match_image[:, len(anchor_image[0]):] = best_roi_image
+    for match in best_matches:
+        anchor_kp = anchor_keypoints[best_anchor_id][match[0].queryIdx]
+        target_kp = best_kp[match[0].trainIdx]
+        target_kp.pt = (target_kp.pt[0] + len(anchor_image[0]), target_kp.pt[1])
+        cv2.line(match_image, (int(anchor_kp.pt[0]), int(anchor_kp.pt[1])), (int(target_kp.pt[0]), int(target_kp.pt[1])), (0, 255, 0), 1)
+        cv2.circle(match_image, (int(anchor_kp.pt[0]), int(anchor_kp.pt[1])), 5, (0, 0, 255), 1)
+        cv2.circle(match_image, (int(target_kp.pt[0]), int(target_kp.pt[1])), 5, (0, 0, 255), 1)
+
+    # Save the match image to the output folder
+    cv2.imwrite(f'output/matches/{target_path.split("\\")[-1]}', match_image)
+    
+    
 
 
 

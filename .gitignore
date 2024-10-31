@@ -8,3 +8,5 @@
 /output/anchor_reduced_colors/*
 /output/heat_images/*
 /output/roi_images/*
+/output/target_with_identification/*
+/output/matches/*
