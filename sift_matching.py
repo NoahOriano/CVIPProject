@@ -13,7 +13,7 @@ print("Begining initialization...")
 show_debug_images = True
 # Padding is used to create a larger region of interest (ROI) around the detected object to ensure the entire object is captured
 # Modiffy these values based on the object in question.
-image_roi_padding = [1, 0.3, 0.3, 0.3] # Top, right, bottom, left padding as a ratio of the ROI size
+image_roi_padding = [0.5, 0.3, 0.3, 0.3] # Top, right, bottom, left padding as a ratio of the ROI size
 # Resize the anchor image, the smaller the value, the smaller the anchor image. 
 # This is set small as the anchor resolution is high compared to the target images
 anchor_scaling = 0.125
@@ -55,12 +55,6 @@ def median_blur(image, kernel_size):
             result[i, j] = np.median(kernel_region)
     
     return result
-
-# Helper function to detect SIFT features for the target images
-def detect_sift_features_from_path(image_path):
-    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    kp, des = sift.detectAndCompute(img, None)
-    return kp, des
 
 def detect_sift_features(image):
     # If the image is not grayscale, convert it to grayscale
@@ -386,16 +380,18 @@ for target_path in target_images:
             match_count = 0
             matches, matches_list = match_sift_features(np.array([descriptor for descriptor in des]), np.array(anchor_des))
             # Determine the quality of the matches as a ratio of the number of matches to the number of matched keypoints in the anchor image
-            if len(anchor_des) > 0:
+            if len(anchor_des) > 0 and len(des) > 0:
                 for match in matches:
-                    if(match != None):
-                        similarity_score = len(match) / len(anchor_des)
+                    if(match != None and match[0] != None):
                         print(match)
                         # Get the size of the anchor keypoint 
+                        if(match[0] >= len(anchor_keypoints[anchor_id])):
+                            continue
                         keypoint_size = anchor_keypoints[anchor_id][match[0]].size
                         match_quality += float(1) / match[2]
                         match_quality /= float(len(anchor_des))
                 match_count = len(matches)
+            similarity_score = match_count / len(anchor_des)
 
             # Update the best ROI if the current ROI has more matches
             if match_quality > best_match_quality:
@@ -473,7 +469,7 @@ for target_path in target_images:
     x, y, w, h = best_roi
     cv2.rectangle(target_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
     # Add test with the similarity score to the image
-    cv2.putText(target_image, f"Similarity Score (out of 1): {best_match_quality:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(target_image, f"Similarity Score (out of 1): {best_similarity_score:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     cv2.imwrite(f'output\\target_with_identification\\{target_path.split("\\")[-1]}', target_image)
 
 
