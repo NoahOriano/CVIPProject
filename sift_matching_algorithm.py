@@ -50,6 +50,7 @@ def display_matches(img1, kp1, img2, kp2, matches):
         print(f"Anchor Keypoint Index: {match[0]}, Target Keypoint Index: {match[1]}, Similarity Score: {match[2]:.2f}")
 
 # Function to apply color segmentation for red objects (like the fire extinguisher)
+# This function is used in the main of this script, but is not used in actual SIFT feature matching for the project
 def segment_red_color(image):
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     lower_red1 = np.array([0, 70, 50])

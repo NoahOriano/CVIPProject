@@ -1,15 +1,4 @@
-/output/*.png
-/output/*.jpg
-/output/*.jpeg
-/output/*.gif
-/output/*.bmp
-/output/*.tiff
-/output/anchor_features
-/output/anchor_reduced_colors/*
-/output/heat_images/*
-/output/roi_images/*
-/output/target_with_identification/*
-/output/matches/*
 /__pycache__
 __pycache__
 *.pyc
+__pycache__/*

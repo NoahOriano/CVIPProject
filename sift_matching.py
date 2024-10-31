@@ -277,8 +277,11 @@ for target_path in target_images:
     print("Processing image", count)
     # Create a 2d array to represent the heat map of pixel interest
     img = cv2.imread(target_path, cv2.IMREAD_COLOR)
+    img = cv2.resize(img, (0, 0), fx=1, fy=1)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     h, w = img.shape[:2]
+    target_height = h
+    target_width = w
     color_mapped_image = np.zeros((h, w, 3), np.uint8)
     heat_array = np.zeros((h, w), np.double)
     for i in range(h):
@@ -372,13 +375,14 @@ for target_path in target_images:
     best_descriptors = None
     for roi in rois:
         x, y, w, h = roi
+        # Skip very small ROIs
+        if (w < int(target_height * 0.03) or h < int(target_height * 0.1)):
+            continue
         # Get the region of interest (ROI) from the target image
         roi_image = target_image[y:y + h, x:x + w]
         # Write the ROI image to a file for debugging
         if show_debug_images:
             cv2.imwrite(f'output/ROI.png', roi_image)
-        # Upscale the ROI image to 3 times the size of the anchor image
-        roi_image = cv2.resize(roi_image, (anchor_w * 3, anchor_h * 3))
         kp, des = detect_sift_features(roi_image)
         print(f'Number of keypoints detected in ROI: {len(kp)}')
         if(len(kp) == 0):
@@ -433,25 +437,29 @@ for target_path in target_images:
         continue
     
     # Draw the matches between the anchor and target image
-    # Consider that the target image is 3 times the size of the anchor image
-    # Place the anchor image over the target image in the top left corner
     # Draw lines between the matches in the target image
     # Draw circles around the matches in the anchor image
-    match_image = np.zeros((len(best_roi_image), len(best_roi_image[0]) + len(anchor_image[0]), 3))
-    match_image[:len(anchor_image), :len(anchor_image[0])] = anchor_image
-    match_image[:, len(anchor_image[0]):] = best_roi_image
+    # Draw the images side by side, gaps are black (0)
+    # The target image is on the left, the anchor image is on the right
+
+    match_image = np.zeros((len(best_roi_image[0]) + len(anchor_image[0]), len(best_roi_image) + len(anchor_image)), np.uint8)
+    match_image.fill(0)
+    best_roi_image = np.uint8(best_roi_image)
+    anchor_image = np.uint8(anchor_image)
+    # Draw the target image on the left
+    match_image[:len(best_roi_image), :len(best_roi_image[0])] = best_roi_image
+    # Draw the anchor image on the right
+    match_image[:len(anchor_image), len(best_roi_image[0]):] = anchor_image
+    # Draw the matches
     for match in best_matches:
-        anchor_kp = anchor_keypoints[best_anchor_id][match[0].queryIdx]
-        target_kp = best_kp[match[0].trainIdx]
-        target_kp.pt = (target_kp.pt[0] + len(anchor_image[0]), target_kp.pt[1])
-        cv2.line(match_image, (int(anchor_kp.pt[0]), int(anchor_kp.pt[1])), (int(target_kp.pt[0]), int(target_kp.pt[1])), (0, 255, 0), 1)
-        cv2.circle(match_image, (int(anchor_kp.pt[0]), int(anchor_kp.pt[1])), 5, (0, 0, 255), 1)
-        cv2.circle(match_image, (int(target_kp.pt[0]), int(target_kp.pt[1])), 5, (0, 0, 255), 1)
+        target_kp = best_kp[match[0]]
+        anchor_kp = anchor_keypoints[best_anchor_id][match[1]]
+        # Draw a line between the keypoints
+        cv2.line(match_image, (int(target_kp.pt[0]), int(target_kp.pt[1])), (int(anchor_kp.pt[0] + len(best_roi_image[0])), int(anchor_kp.pt[1])), (255, 0, 0), 1)
+        # Draw a circle around the keypoints
+        cv2.circle(match_image, (int(target_kp.pt[0]), int(target_kp.pt[1])), 2, (0, 255, 0), 1)
+        cv2.circle(match_image, (int(anchor_kp.pt[0] + len(best_roi_image[0])), int(anchor_kp.pt[1]), 2, (0, 255, 0), 1))
 
     # Save the match image to the output folder
     cv2.imwrite(f'output/matches/{target_path.split("\\")[-1]}', match_image)
-    
-    
-
-
 

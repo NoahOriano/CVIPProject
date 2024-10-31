@@ -362,29 +362,29 @@ def generateDescriptors(keypoints, gaussian_images, window_width=4, num_bins=8, 
             if orientation_bin_floor >= num_bins:
                 orientation_bin_floor -= num_bins
 
-            c1 = magnitude * row_fraction
-            c0 = magnitude * (1 - row_fraction)
-            c11 = c1 * col_fraction
-            c10 = c1 * (1 - col_fraction)
-            c01 = c0 * col_fraction
-            c00 = c0 * (1 - col_fraction)
-            c111 = c11 * orientation_fraction
-            c110 = c11 * (1 - orientation_fraction)
-            c101 = c10 * orientation_fraction
-            c100 = c10 * (1 - orientation_fraction)
-            c011 = c01 * orientation_fraction
-            c010 = c01 * (1 - orientation_fraction)
-            c001 = c00 * orientation_fraction
-            c000 = c00 * (1 - orientation_fraction)
+            # Compute intermediary coefficients only once
+            c0, c1 = magnitude * (1 - row_fraction), magnitude * row_fraction
+            c00, c01 = c0 * (1 - col_fraction), c0 * col_fraction
+            c10, c11 = c1 * (1 - col_fraction), c1 * col_fraction
 
-            histogram_tensor[row_bin_floor + 1, col_bin_floor + 1, orientation_bin_floor] += c000
-            histogram_tensor[row_bin_floor + 1, col_bin_floor + 1, (orientation_bin_floor + 1) % num_bins] += c001
-            histogram_tensor[row_bin_floor + 1, col_bin_floor + 2, orientation_bin_floor] += c010
-            histogram_tensor[row_bin_floor + 1, col_bin_floor + 2, (orientation_bin_floor + 1) % num_bins] += c011
-            histogram_tensor[row_bin_floor + 2, col_bin_floor + 1, orientation_bin_floor] += c100
-            histogram_tensor[row_bin_floor + 2, col_bin_floor + 1, (orientation_bin_floor + 1) % num_bins] += c101
-            histogram_tensor[row_bin_floor + 2, col_bin_floor + 2, orientation_bin_floor] += c110
-            histogram_tensor[row_bin_floor + 2, col_bin_floor + 2, (orientation_bin_floor + 1) % num_bins] += c111
+            # Precompute orientation splits
+            c000, c001 = c00 * (1 - orientation_fraction), c00 * orientation_fraction
+            c010, c011 = c01 * (1 - orientation_fraction), c01 * orientation_fraction
+            c100, c101 = c10 * (1 - orientation_fraction), c10 * orientation_fraction
+            c110, c111 = c11 * (1 - orientation_fraction), c11 * orientation_fraction
+
+            # Populate the histogram tensor with the interpolated values
+            orientation_bin_next = (orientation_bin_floor + 1) % num_bins
+            row_base, col_base = row_bin_floor + 1, col_bin_floor + 1
+
+            histogram_tensor[row_base, col_base, orientation_bin_floor] += c000
+            histogram_tensor[row_base, col_base, orientation_bin_next] += c001
+            histogram_tensor[row_base, col_base + 1, orientation_bin_floor] += c010
+            histogram_tensor[row_base, col_base + 1, orientation_bin_next] += c011
+            histogram_tensor[row_base + 1, col_base, orientation_bin_floor] += c100
+            histogram_tensor[row_base + 1, col_base, orientation_bin_next] += c101
+            histogram_tensor[row_base + 1, col_base + 1, orientation_bin_floor] += c110
+            histogram_tensor[row_base + 1, col_base + 1, orientation_bin_next] += c111
 
         descriptor_vector = histogram_tensor[1:-1, 1:-1, :].flatten()  # Remove histogram borders
         # Threshold and normalize descriptor_vector
